@@ -1,0 +1,248 @@
+-- ====================================
+-- MedicalPlans
+-- ====================================
+
+CREATE TABLE MedicalPlans (
+    MedicalPlanID INT PRIMARY KEY IDENTITY(1,1),
+    PlanName VARCHAR(100) NOT NULL,
+    PlanType VARCHAR(50) NOT NULL,
+    MonthlyPremium DECIMAL(10,2) NOT NULL,
+
+    CONSTRAINT CHK_MedicalPlans_MonthlyPremium
+    CHECK (MonthlyPremium > 0)
+)
+
+
+-- ====================================
+-- Members
+-- ====================================
+
+CREATE TABLE Members (
+    MemberID INT PRIMARY KEY IDENTITY(1,1),
+    MedicalPlanID INT NOT NULL,
+    FirstName VARCHAR(100) NOT NULL,
+    LastName VARCHAR(100) NOT NULL,
+    DateOfBirth DATE NOT NULL,
+    MemberStatus VARCHAR(50) NOT NULL,
+    RegistrationDate DATE NOT NULL,
+    ResignationDate DATE NULL,
+
+    CONSTRAINT FK_Members_MedicalPlans
+    FOREIGN KEY (MedicalPlanID)
+    REFERENCES MedicalPlans(MedicalPlanID),
+
+    CONSTRAINT CHK_Members_ResignationDate
+    CHECK (
+        ResignationDate IS NULL
+        OR ResignationDate >= RegistrationDate
+    ),
+
+    CONSTRAINT CHK_Members_Status
+    CHECK (
+        MemberStatus IN (
+            'Active',
+            'Suspended',
+            'Cancelled'
+        )
+    )
+)
+
+
+-- ====================================
+-- Dependants
+-- ====================================
+
+CREATE TABLE Dependants (
+    DependantID INT PRIMARY KEY IDENTITY(1,1),
+    MemberID INT NOT NULL,
+    FirstName VARCHAR(100) NOT NULL,
+    LastName VARCHAR(100) NOT NULL,
+    RelationshipType VARCHAR(50) NOT NULL,
+    DateOfBirth DATE NOT NULL,
+
+    CONSTRAINT FK_Dependants_Members
+    FOREIGN KEY (MemberID)
+    REFERENCES Members(MemberID),
+
+    CONSTRAINT CHK_Dependants_RelationshipType
+    CHECK (
+        RelationshipType IN (
+            'Spouse',
+            'Child',
+            'Parent'
+        )
+    )
+)
+
+
+-- ====================================
+-- Providers
+-- ====================================
+
+CREATE TABLE Providers (
+    ProviderID INT PRIMARY KEY IDENTITY(1,1),
+    FirstName VARCHAR(100) NOT NULL,
+    LastName VARCHAR(100) NOT NULL,
+    ProviderType VARCHAR(50) NOT NULL,
+    PracticeNumber VARCHAR(50) NOT NULL UNIQUE,
+
+    CONSTRAINT CHK_Providers_ProviderType
+    CHECK (
+        ProviderType IN (
+            'GP',
+            'Hospital',
+            'Pharmacy',
+            'Specialist'
+        )
+    )
+)
+
+
+-- ====================================
+-- Benefits
+-- ====================================
+
+CREATE TABLE Benefits (
+    BenefitID INT PRIMARY KEY IDENTITY(1,1),
+    MedicalPlanID INT NOT NULL,
+    BenefitCategory VARCHAR(100) NOT NULL,
+    BenefitLimit DECIMAL(12,2) NOT NULL,
+    IsCovered BIT NOT NULL,
+
+    CONSTRAINT FK_Benefits_MedicalPlans
+    FOREIGN KEY (MedicalPlanID)
+    REFERENCES MedicalPlans(MedicalPlanID),
+
+    CONSTRAINT CHK_Benefits_BenefitLimit
+    CHECK (BenefitLimit >= 0)
+)
+
+
+-- ====================================
+-- WaitingPeriods
+-- ====================================
+
+CREATE TABLE WaitingPeriods (
+    WaitingPeriodID INT PRIMARY KEY IDENTITY(1,1),
+    BenefitID INT NOT NULL,
+    WaitingPeriodMonths INT NOT NULL,
+
+    CONSTRAINT FK_WaitingPeriods_Benefits
+    FOREIGN KEY (BenefitID)
+    REFERENCES Benefits(BenefitID),
+
+    CONSTRAINT CHK_WaitingPeriods_Months
+    CHECK (WaitingPeriodMonths >= 0)
+)
+
+
+-- ====================================
+-- Tariffs
+-- ====================================
+
+CREATE TABLE Tariffs (
+    TariffID INT PRIMARY KEY IDENTITY(1,1),
+    TariffCode VARCHAR(50) NOT NULL UNIQUE,
+    TariffDescription VARCHAR(255) NOT NULL,
+    BenefitCategory VARCHAR(100) NOT NULL,
+    TariffAmount DECIMAL(12,2) NOT NULL,
+
+    CONSTRAINT CHK_Tariffs_Amount
+    CHECK (TariffAmount > 0)
+)
+
+
+-- ====================================
+-- Claims
+-- ====================================
+
+CREATE TABLE Claims (
+    ClaimID INT PRIMARY KEY IDENTITY(1,1),
+    MemberID INT NOT NULL,
+    DependantID INT NULL,
+    ProviderID INT NOT NULL,
+    DateSubmitted DATE NOT NULL,
+    DateProcessed DATE NULL,
+    ClaimAmount DECIMAL(12,2) NOT NULL,
+    ApprovedAmount DECIMAL(12,2) NULL,
+    ClaimStatus VARCHAR(50) NOT NULL,
+
+    CONSTRAINT FK_Claims_Members
+    FOREIGN KEY (MemberID)
+    REFERENCES Members(MemberID),
+
+    CONSTRAINT FK_Claims_Dependants
+    FOREIGN KEY (DependantID)
+    REFERENCES Dependants(DependantID),
+
+    CONSTRAINT FK_Claims_Providers
+    FOREIGN KEY (ProviderID)
+    REFERENCES Providers(ProviderID),
+
+    CONSTRAINT CHK_Claims_ClaimAmount
+    CHECK (ClaimAmount > 0),
+
+    CONSTRAINT CHK_Claims_ApprovedAmount
+    CHECK (
+        ApprovedAmount IS NULL
+        OR ApprovedAmount <= ClaimAmount
+    ),
+
+    CONSTRAINT CHK_Claims_DateSubmitted
+    CHECK (DateSubmitted <= GETDATE()),
+
+    CONSTRAINT CHK_Claims_Status
+    CHECK (
+        ClaimStatus IN (
+            'Pending',
+            'Approved',
+            'Rejected',
+            'Partially Approved'
+        )
+    )
+)
+
+
+-- ====================================
+-- ClaimLines
+-- ====================================
+
+CREATE TABLE ClaimLines (
+    ClaimLineID INT PRIMARY KEY IDENTITY(1,1),
+    ClaimID INT NOT NULL,
+    TariffID INT NOT NULL,
+    Quantity INT NOT NULL,
+    ClaimedAmount DECIMAL(12,2) NOT NULL,
+    ApprovedAmount DECIMAL(12,2) NULL,
+    LineStatus VARCHAR(50) NOT NULL,
+
+    CONSTRAINT FK_ClaimLines_Claims
+    FOREIGN KEY (ClaimID)
+    REFERENCES Claims(ClaimID),
+
+    CONSTRAINT FK_ClaimLines_Tariffs
+    FOREIGN KEY (TariffID)
+    REFERENCES Tariffs(TariffID),
+
+    CONSTRAINT CHK_ClaimLines_Quantity
+    CHECK (Quantity > 0),
+
+    CONSTRAINT CHK_ClaimLines_ClaimedAmount
+    CHECK (ClaimedAmount > 0),
+
+    CONSTRAINT CHK_ClaimLines_ApprovedAmount
+    CHECK (
+        ApprovedAmount IS NULL
+        OR ApprovedAmount <= ClaimedAmount
+    ),
+
+    CONSTRAINT CHK_ClaimLines_Status
+    CHECK (
+        LineStatus IN (
+            'Pending',
+            'Approved',
+            'Rejected'
+        )
+    )
+)
+GO
