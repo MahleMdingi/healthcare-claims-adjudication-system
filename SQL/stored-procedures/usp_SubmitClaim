@@ -1,0 +1,179 @@
+CREATE PROCEDURE usp_SubmitClaim
+    @i_MemberID INT,
+    @i_DependantID INT = NULL,
+    @i_ProviderID INT,
+    @i_TariffID INT,
+    @i_Quantity INT
+AS
+BEGIN
+
+    BEGIN TRY
+
+        BEGIN TRAN
+
+        -- ====================================
+        -- Declare Variables
+        -- ====================================
+
+        DECLARE
+            @l_ClaimAmount DECIMAL(10,2),
+            @l_ClaimID INT,
+            @l_TariffAmount DECIMAL(10,2)
+
+
+        -- ====================================
+        -- Validate Member Exists
+        -- ====================================
+
+        IF NOT EXISTS (
+            SELECT 1
+            FROM Members
+            WHERE MemberID = @i_MemberID
+        )
+        BEGIN
+            RAISERROR('Member does not exist.', 16, 1)
+        END
+
+
+        -- ====================================
+        -- Validate Provider Exists
+        -- ====================================
+
+        IF NOT EXISTS (
+            SELECT 1
+            FROM Providers
+            WHERE ProviderID = @i_ProviderID
+        )
+        BEGIN
+            RAISERROR('Provider does not exist.', 16, 1)
+        END
+
+
+        -- ====================================
+        -- Validate Member Is Active
+        -- ====================================
+
+        IF NOT EXISTS (
+            SELECT 1
+            FROM Members
+            WHERE MemberID = @i_MemberID
+            AND MemberStatus = 'Active'
+        )
+        BEGIN
+            RAISERROR('Member is not active.', 16, 1)
+        END
+
+
+        -- ====================================
+        -- Validate Tariff Exists
+        -- ====================================
+
+        IF NOT EXISTS (
+            SELECT 1
+            FROM Tariffs
+            WHERE TariffID = @i_TariffID
+        )
+        BEGIN
+            RAISERROR('Tariff does not exist.', 16, 1)
+        END
+
+
+        -- ====================================
+        -- Validate Quantity
+        -- ====================================
+
+        IF @i_Quantity <= 0
+        BEGIN
+            RAISERROR('Quantity must be greater than 0.', 16, 1)
+        END
+
+
+        -- ====================================
+        -- Retrieve Tariff Amount
+        -- ====================================
+
+        SELECT @l_TariffAmount = TariffAmount
+        FROM Tariffs
+        WHERE TariffID = @i_TariffID
+
+
+        -- ====================================
+        -- Calculate Claim Amount
+        -- ====================================
+
+        SET @l_ClaimAmount = @l_TariffAmount * @i_Quantity
+
+
+        -- ====================================
+        -- Insert Into Claims
+        -- ====================================
+
+        INSERT INTO Claims (
+            MemberID,
+            DependantID,
+            ProviderID,
+            DateSubmitted,
+            DateProcessed,
+            ClaimAmount,
+            ApprovedAmount,
+            ClaimStatus
+        )
+        VALUES (
+            @i_MemberID,
+            @i_DependantID,
+            @i_ProviderID,
+            GETDATE(),
+            NULL,
+            @l_ClaimAmount,
+            NULL,
+            'Pending'
+        )
+
+
+        -- ====================================
+        -- Retrieve ClaimID
+        -- ====================================
+
+        SET @l_ClaimID = SCOPE_IDENTITY()
+
+
+        -- ====================================
+        -- Insert Into ClaimLines
+        -- ====================================
+
+        INSERT INTO ClaimLines (
+            ClaimID,
+            TariffID,
+            Quantity,
+            ClaimedAmount,
+            ApprovedAmount,
+            LineStatus
+        )
+        VALUES (
+            @l_ClaimID,
+            @i_TariffID,
+            @i_Quantity,
+            @l_ClaimAmount,
+            NULL,
+            'Pending'
+        )
+
+
+        COMMIT
+
+    END TRY
+
+    BEGIN CATCH
+
+        ROLLBACK
+
+        DECLARE @l_ErrorMessage VARCHAR(500)
+
+        SET @l_ErrorMessage = ERROR_MESSAGE()
+
+        RAISERROR(@l_ErrorMessage, 16, 1)
+
+    END CATCH
+
+END
+GO
